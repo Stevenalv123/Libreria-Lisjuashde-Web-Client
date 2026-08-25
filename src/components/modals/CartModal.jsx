@@ -1,0 +1,139 @@
+import { useState, useEffect } from 'react';
+import { useApp } from '../../context/AppContext';
+
+export default function CartModal() {
+  const { cartModalOpen, setCartModalOpen, cart, changeQty, removeFromCart, checkoutOrder, currentProfile, guestInfo } = useApp();
+  const [customerName, setCustomerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('local');
+  const [tipoEntrega, setTipoEntrega] = useState('recoger');
+  const [notas, setNotas] = useState('');
+
+  // Prefill from logged-in profile or guest info
+  useEffect(() => {
+    if (cartModalOpen) {
+      setCustomerName((prev) => prev || currentProfile?.nombre_completo || guestInfo?.nombre || '');
+      setPhone((prev) => prev || currentProfile?.telefono || guestInfo?.telefono || '');
+    }
+  }, [cartModalOpen, currentProfile, guestInfo]);
+
+  if (!cartModalOpen) return null;
+
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const handleCheckout = async () => {
+    const ok = await checkoutOrder({
+      name: customerName.trim(),
+      phone: phone.trim(),
+      email: currentProfile?.email || null,
+      paymentMethod,
+      tipoEntrega,
+      notas,
+    });
+    if (ok) {
+      setNotas('');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <i className="fa-solid fa-bag-shopping text-indigo-600 text-lg"></i>
+            <h3 className="font-bold text-lg text-slate-900">Carrito y Reserva de Pedido</h3>
+          </div>
+          <button onClick={() => setCartModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-lg"><i className="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+          {cart.length === 0 ? (
+            <div className="py-12 text-center text-slate-400">
+              <i className="fa-solid fa-basket-shopping text-4xl mb-2"></i>
+              <p className="text-sm font-medium">Tu lista de reserva está vacía</p>
+            </div>
+          ) : (
+            cart.map((item) => (
+              <div key={item.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div className="flex items-center space-x-3">
+                  <img src={item.image} className="w-12 h-12 object-contain bg-white rounded-xl p-1 border border-slate-200" onError={(e) => { e.target.src = 'https://placehold.co/100x100/png?text=Util'; }} />
+                  <div>
+                    <h5 className="font-bold text-slate-900 text-sm">{item.name}</h5>
+                    <span className="text-xs text-indigo-600 font-semibold">C${item.price.toFixed(2)} c/u</span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-1 bg-white border border-slate-300 rounded-lg px-2 py-1">
+                    <button onClick={() => changeQty(item.id, -1)} className="text-slate-500 hover:text-slate-800 px-1"><i className="fa-solid fa-minus text-xs"></i></button>
+                    <span className="text-xs font-bold px-1">{item.quantity}</span>
+                    <button onClick={() => changeQty(item.id, 1)} className="text-slate-500 hover:text-slate-800 px-1"><i className="fa-solid fa-plus text-xs"></i></button>
+                  </div>
+                  <button onClick={() => removeFromCart(item.id)} className="text-rose-500 hover:text-rose-700 p-1"><i className="fa-solid fa-trash text-sm"></i></button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-4">
+          <div className="flex items-center justify-between text-lg font-bold">
+            <span>Total a Pagar:</span>
+            <span className="text-indigo-600">C${total.toFixed(2)}</span>
+          </div>
+
+          <div className="space-y-3 pt-2 border-t border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nombre Completo</label>
+                <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Ej. María Pérez" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Teléfono</label>
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej. 8888-8888" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Entrega</label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center space-x-2 p-2.5 bg-white border border-slate-300 rounded-xl cursor-pointer hover:border-indigo-500 transition-all">
+                  <input type="radio" name="entrega" value="recoger" checked={tipoEntrega === 'recoger'} onChange={(e) => setTipoEntrega(e.target.value)} className="text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm font-medium flex items-center space-x-1.5"><i className="fa-solid fa-store text-indigo-600"></i> <span>Recoger</span></span>
+                </label>
+                <label className="flex items-center space-x-2 p-2.5 bg-white border border-slate-300 rounded-xl cursor-pointer hover:border-indigo-500 transition-all">
+                  <input type="radio" name="entrega" value="domicilio" checked={tipoEntrega === 'domicilio'} onChange={(e) => setTipoEntrega(e.target.value)} className="text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm font-medium flex items-center space-x-1.5"><i className="fa-solid fa-truck text-amber-600"></i> <span>Domicilio</span></span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Método de Pago</label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center space-x-2 p-2.5 bg-white border border-slate-300 rounded-xl cursor-pointer hover:border-indigo-500 transition-all">
+                  <input type="radio" name="paymentMethod" value="local" checked={paymentMethod === 'local'} onChange={(e) => setPaymentMethod(e.target.value)} className="text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm font-medium flex items-center space-x-1.5"><i className="fa-solid fa-shop text-amber-600"></i> <span>En el Local</span></span>
+                </label>
+                <label className="flex items-center space-x-2 p-2.5 bg-white border border-slate-300 rounded-xl cursor-pointer hover:border-indigo-500 transition-all">
+                  <input type="radio" name="paymentMethod" value="tarjeta" checked={paymentMethod === 'tarjeta'} onChange={(e) => setPaymentMethod(e.target.value)} className="text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm font-medium flex items-center space-x-1.5"><i className="fa-solid fa-credit-card text-indigo-600"></i> <span>Tarjeta</span></span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Notas (opcional)</label>
+              <input type="text" value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Ej. Llamar antes de entregar" className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <button onClick={handleCheckout} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2">
+            <i className="fa-solid fa-check-circle"></i>
+            <span>Confirmar y Reservar Pedido</span>
+          </button>
+          <p className="text-center text-xs text-slate-400">El pago se realiza al recoger o recibir tu pedido. Te confirmaremos por teléfono.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
