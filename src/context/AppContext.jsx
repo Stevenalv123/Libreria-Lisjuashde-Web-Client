@@ -55,11 +55,32 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // ===== Login modal (shown when unauthenticated user tries cart/prints) =====
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const pendingCartItem = useRef(null);   // product id to add after login
+  const pendingNavigation = useRef(null); // view to navigate to after login
+
+  const openLoginModal = useCallback((productId = null, targetView = null) => {
+    pendingCartItem.current = productId;
+    pendingNavigation.current = targetView;
+    setLoginModalOpen(true);
+  }, []);
+
+  const closeLoginModal = useCallback(() => {
+    pendingCartItem.current = null;
+    pendingNavigation.current = null;
+    setLoginModalOpen(false);
+  }, []);
+
   // ===== Modals =====
   const [cartModalOpen, setCartModalOpen] = useState(false);
   const [orderModal, setOrderModal] = useState({ open: false, order: null });
   const viewOrderDetails = useCallback((order) => setOrderModal({ open: true, order }), []);
   const closeOrderModal = useCallback(() => setOrderModal({ open: false, order: null }), []);
+
+  // ===== Confirmación de orden (muestra el número de orden en grande) =====
+  const [orderConfirmation, setOrderConfirmation] = useState(null); // { numeroOrden, tipo, precio, nombre }
+  const closeOrderConfirmation = useCallback(() => setOrderConfirmation(null), []);
 
   const isSupabaseConfigured = useCallback(() => {
     if (supabase) return true;
@@ -67,13 +88,55 @@ export function AppProvider({ children }) {
     return false;
   }, [showToast]);
 
-  // ===== Access gate =====
+  // ===== Access gate (kept for account view checks) =====
   const hasAccess = !!currentProfile || !!guestInfo;
+
+  // ===== productsRef: always-current reference to avoid stale closure in effects =====
+  const productsRef = useRef([]);
+  useEffect(() => { productsRef.current = products; }, [products]);
 
   // ===== View switching =====
   const switchView = useCallback((view) => {
+    // 'access' view requires login
+    if (view === 'access' && !currentProfile && !guestInfo) {
+      openLoginModal(null, 'access');
+      return;
+    }
     setCurrentView(view);
-  }, []);
+  }, [currentProfile, guestInfo, openLoginModal]);
+
+  // ===== Execute pending action after login/guest =====
+  useEffect(() => {
+    if (currentProfile || guestInfo) {
+      // Navigate to pending view
+      if (pendingNavigation.current) {
+        const nav = pendingNavigation.current;
+        pendingNavigation.current = null;
+        setCurrentView(nav);
+      }
+      // Add pending cart item
+      if (pendingCartItem.current) {
+        const id = pendingCartItem.current;
+        pendingCartItem.current = null;
+        const product = productsRef.current.find((p) => p.id === id);
+        if (product && product.stock > 0) {
+          setCart((prev) => {
+            const existing = prev.find((item) => item.id === id);
+            if (existing) {
+              if (existing.quantity < product.stock) {
+                return prev.map((item) => item.id === id ? { ...item, quantity: item.quantity + 1 } : item);
+              }
+              return prev;
+            }
+            return [...prev, { ...product, quantity: 1 }];
+          });
+          showToast(`¡Añadido al carrito: ${product.name}!`);
+          setCartModalOpen(true);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProfile, guestInfo]);
 
   // ===== Load products from storefront view =====
   const loadProducts = useCallback(async () => {
@@ -154,6 +217,7 @@ export function AppProvider({ children }) {
     if (data.session) {
       await loadCurrentProfile(data.user);
       clearGuest();
+      setLoginModalOpen(false);
       showToast('¡Cuenta creada! Sesión iniciada correctamente.');
     } else {
       showToast('Cuenta creada. Revisa tu correo para confirmar la cuenta.');
@@ -167,7 +231,8 @@ export function AppProvider({ children }) {
     if (error) { showToast(error.message, 'error'); return; }
     await loadCurrentProfile(data.user);
     clearGuest();
-    showToast('Sesión iniciada correctamente.');
+    setLoginModalOpen(false);
+    showToast('¡Bienvenido/a de nuevo!');
     return data;
   }, [isSupabaseConfigured, showToast, loadCurrentProfile]);
 
@@ -205,6 +270,7 @@ export function AppProvider({ children }) {
     const info = { nombre: nombre.trim(), telefono: telefono.trim() };
     try { localStorage.setItem(GUEST_KEY, JSON.stringify(info)); } catch { /* ignore */ }
     setGuestInfo(info);
+    setLoginModalOpen(false);
     showToast(`¡Bienvenido/a, ${info.nombre}!`);
     return true;
   }, [showToast]);
@@ -219,6 +285,11 @@ export function AppProvider({ children }) {
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const addToCart = useCallback((id) => {
+    // Si no hay sesión ni modo invitado → pedir login primero
+    if (!currentProfile && !guestInfo) {
+      openLoginModal(id, null);
+      return;
+    }
     const product = products.find((p) => p.id === id);
     if (!product || product.stock <= 0) { showToast('Producto sin stock disponible', 'error'); return; }
     setCart((prev) => {
@@ -233,7 +304,7 @@ export function AppProvider({ children }) {
       return [...prev, { ...product, quantity: 1 }];
     });
     showToast(`Añadido: ${product.name}`);
-  }, [products, showToast]);
+  }, [products, showToast, currentProfile, guestInfo, openLoginModal]);
 
   const changeQty = useCallback((id, delta) => {
     const product = products.find((p) => p.id === id);
@@ -265,6 +336,7 @@ export function AppProvider({ children }) {
     const metodo = paymentMethod === 'tarjeta' ? 'Tarjeta' : 'Efectivo en local';
     const entrega = tipoEntrega === 'domicilio' ? 'Domicilio' : 'Recoger en tienda';
 
+    let numeroOrden = null;
     try {
       const pedidoPayload = {
         id_empresa: EMPRESA_ID,
@@ -284,11 +356,14 @@ export function AppProvider({ children }) {
         imagen: i.image || '',
       }));
 
-      const { error: rpcError } = await supabase.rpc('crear_pedido_web', {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('crear_pedido_web', {
         p_pedido: pedidoPayload,
         p_items: itemsPayload,
       });
       if (rpcError) throw rpcError;
+
+      // La función ahora devuelve { id_pedido, numero_orden }
+      numeroOrden = rpcData?.numero_orden || (rpcData?.id_pedido ? `P-${String(rpcData.id_pedido).padStart(4, '0')}` : null);
 
       if (currentProfile?.id && loadMyOrdersRef.current) await loadMyOrdersRef.current();
     } catch (err) {
@@ -299,8 +374,8 @@ export function AppProvider({ children }) {
 
     setCart([]);
     setCartModalOpen(false);
-    showToast('¡Pedido reservado! Te avisaremos cuando esté listo.');
-    return true;
+    setOrderConfirmation({ numeroOrden, tipo: 'pedido', precio: total, nombre: name.trim() });
+    return { ok: true, numeroOrden, tipo: 'pedido' };
   }, [cart, currentProfile, showToast, isSupabaseConfigured]);
 
   // ===== Print order -> trabajos_impresion =====
@@ -327,9 +402,10 @@ export function AppProvider({ children }) {
       return false;
     }
 
+    let numeroOrden = null;
     try {
       const userId = currentProfile?.id || null;
-      const { error: dbErr } = await supabase
+      const { data: insertData, error: dbErr } = await supabase
         .from('trabajos_impresion')
         .insert([{
           id_empresa: EMPRESA_ID,
@@ -344,8 +420,11 @@ export function AppProvider({ children }) {
           notas: notes?.trim() || null,
           precio_estimado: precioEstimado,
           estado: 'Pendiente',
-        }]);
+        }])
+        .select('id_trabajo, numero_orden')
+        .single();
       if (dbErr) throw dbErr;
+      numeroOrden = insertData?.numero_orden || (insertData?.id_trabajo ? `I-${String(insertData.id_trabajo).padStart(4, '0')}` : null);
     } catch (err) {
       console.error('submitPrintOrder error:', err);
       showToast(err.message || 'Error guardando el trabajo de impresión', 'error');
@@ -353,9 +432,9 @@ export function AppProvider({ children }) {
     }
 
     if (currentProfile?.id && loadMyOrdersRef.current) await loadMyOrdersRef.current();
-    showToast(`¡Trabajo enviado! Costo estimado: C$${precioEstimado.toFixed(2)}. Retira con: ${name.trim()}`);
     setCurrentView('store');
-    return true;
+    setOrderConfirmation({ numeroOrden, tipo: 'impresion', precio: precioEstimado, nombre: name.trim() });
+    return { ok: true, numeroOrden, tipo: 'impresion', precio: precioEstimado, nombre: name.trim() };
   }, [currentProfile, showToast, isSupabaseConfigured]);
 
   // ===== Initialization =====
@@ -411,9 +490,12 @@ export function AppProvider({ children }) {
     // toast + confirm
     toast, showToast,
     confirmState, openConfirmModal, resolveConfirm,
+    // login modal
+    loginModalOpen, openLoginModal, closeLoginModal,
     // modals
     cartModalOpen, setCartModalOpen,
     orderModal, viewOrderDetails, closeOrderModal,
+    orderConfirmation, closeOrderConfirmation,
     // auth
     handleRegistration, handleLogin, handleLogout, handleGoogleSignIn,
     loadMyOrdersRef,

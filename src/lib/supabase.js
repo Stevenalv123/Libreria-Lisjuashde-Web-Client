@@ -11,7 +11,13 @@ const hasSupabaseCredentials =
   SUPABASE_ANON_KEY.length > 20;
 
 export const supabase = hasSupabaseCredentials
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'libreria-cliente-auth-token',  // clave única → no choca con el admin
+      },
+    })
   : null;
 
 export default supabase;

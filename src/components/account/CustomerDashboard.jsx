@@ -21,7 +21,7 @@ export default function CustomerDashboard() {
     try {
       const { data: pedidos, error } = await supabase
         .from('pedidos_web')
-        .select('id_pedido,nombre_cliente,telefono,total,metodo_pago,tipo_entrega,notas,estado,created_at, pedidos_web_items(id_item,nombre,cantidad,precio_unitario,imagen)')
+        .select('id_pedido,numero_orden,nombre_cliente,telefono,total,metodo_pago,tipo_entrega,notas,estado,created_at, pedidos_web_items(id_item,nombre,cantidad,precio_unitario,imagen)')
         .eq('user_id', currentProfile.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -33,7 +33,7 @@ export default function CustomerDashboard() {
     try {
       const { data: prints, error: errP } = await supabase
         .from('trabajos_impresion')
-        .select('id_trabajo,archivo_nombre,modo_color,copias,tamano_papel,notas,precio_estimado,estado,created_at')
+        .select('id_trabajo,numero_orden,archivo_nombre,modo_color,copias,tamano_papel,notas,precio_estimado,estado,created_at')
         .eq('user_id', currentProfile.id)
         .order('created_at', { ascending: false });
       if (errP) throw errP;
@@ -59,6 +59,7 @@ export default function CustomerDashboard() {
 
   const orderForDetail = (o) => ({
     id: o.id_pedido,
+    numero_orden: o.numero_orden || `P-${String(o.id_pedido).padStart(4, '0')}`,
     customer: o.nombre_cliente,
     payment_method: o.metodo_pago,
     total: o.total,
@@ -120,7 +121,7 @@ export default function CustomerDashboard() {
               return (
                 <div key={o.id_pedido} className="border border-slate-200 rounded-2xl p-4 bg-white shadow-sm space-y-2 hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-indigo-600">Pedido #{o.id_pedido}</span>
+                    <span className="text-xs font-bold text-indigo-600">Orden {o.numero_orden || `P-${String(o.id_pedido).padStart(4, '0')}`}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusBadge(o.estado)}`}>{o.estado}</span>
                   </div>
                   <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
@@ -155,9 +156,10 @@ export default function CustomerDashboard() {
             myPrints.map((p) => (
               <div key={p.id_trabajo} className="border border-slate-200 rounded-2xl p-4 bg-white shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-indigo-600 truncate max-w-[70%]"><i className="fa-solid fa-file-lines mr-1"></i>{p.archivo_nombre}</span>
+                  <span className="text-xs font-bold text-indigo-600">Orden {p.numero_orden || `I-${String(p.id_trabajo).padStart(4, '0')}`}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusBadge(p.estado)}`}>{p.estado}</span>
                 </div>
+                <p className="text-xs text-slate-600 truncate"><i className="fa-solid fa-file-lines mr-1 text-slate-400"></i>{p.archivo_nombre}</p>
                 <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                   <i className="fa-regular fa-calendar text-slate-400"></i>{fmtDate(p.created_at)}
                   <span className="text-slate-300">•</span>

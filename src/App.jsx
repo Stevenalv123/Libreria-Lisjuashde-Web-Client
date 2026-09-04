@@ -7,10 +7,11 @@ import AccessView from './components/account/AccessView';
 import CartModal from './components/modals/CartModal';
 import OrderDetailModal from './components/modals/OrderDetailModal';
 import ConfirmModal from './components/modals/ConfirmModal';
-import AccessGate from './components/account/AccessGate';
+import LoginModal from './components/modals/LoginModal';
+import OrderConfirmationModal from './components/modals/OrderConfirmationModal';
 
 export default function App() {
-  const { currentView, hasAccess, authLoading } = useApp();
+  const { currentView, authLoading } = useApp();
 
   if (authLoading) {
     return (
@@ -23,16 +24,8 @@ export default function App() {
     );
   }
 
-  // Forced access: user must log in or continue as guest before browsing.
-  if (!hasAccess) {
-    return (
-      <>
-        <AccessGate />
-        <Toast />
-      </>
-    );
-  }
-
+  // La tienda es pública — el modal de login aparece solo cuando el cliente
+  // intenta añadir al carrito, enviar impresiones o ver su cuenta.
   return (
     <>
       <Header />
@@ -44,8 +37,10 @@ export default function App() {
       </main>
 
       {/* Modals */}
+      <LoginModal />
       <CartModal />
       <OrderDetailModal />
+      <OrderConfirmationModal />
       <ConfirmModal />
       <Toast />
     </>

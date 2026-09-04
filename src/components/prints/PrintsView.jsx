@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 const PRINT_PRICE = { bn: 1, color: 5 };
 
 export default function PrintsView() {
-  const { submitPrintOrder, currentProfile, guestInfo } = useApp();
+  const { submitPrintOrder, currentProfile, guestInfo, openLoginModal } = useApp();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [file, setFile] = useState(null);
@@ -23,6 +23,11 @@ export default function PrintsView() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Si no hay sesión ni modo invitado → pedir login antes de enviar
+    if (!currentProfile && !guestInfo) {
+      openLoginModal(null, null);
+      return;
+    }
     const ok = await submitPrintOrder({
       name: name.trim(),
       phone: phone.trim(),

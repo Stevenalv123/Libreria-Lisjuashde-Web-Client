@@ -1,9 +1,19 @@
 import { useApp } from '../context/AppContext';
 
 export default function Header() {
-  const { currentView, switchView, currentProfile, guestInfo, cartCount, setCartModalOpen, handleLogout, exitGuest } = useApp();
+  const {
+    currentView, switchView,
+    currentProfile, guestInfo,
+    cartCount, setCartModalOpen,
+    handleLogout, exitGuest,
+    openLoginModal,
+  } = useApp();
 
-  const displayName = currentProfile?.nombre_completo || guestInfo?.nombre || 'Invitado';
+  const isLoggedIn = !!currentProfile;
+  const isGuest = !currentProfile && !!guestInfo;
+  const isAnonymous = !currentProfile && !guestInfo;
+
+  const displayName = currentProfile?.nombre_completo || guestInfo?.nombre || '';
   const firstName = displayName.split(' ')[0];
 
   const tabClass = (view) =>
@@ -14,6 +24,7 @@ export default function Header() {
   return (
     <header className="bg-indigo-600 text-white shadow-md sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        {/* Logo y nombre */}
         <div className="flex items-center space-x-3">
           <div className="bg-white rounded-xl shadow flex items-center justify-center w-10 h-10 overflow-hidden">
             <img src="img/logo.png" alt="Logotipo de Librería Lisjuashde" className="w-full h-full object-contain p-1" />
@@ -24,8 +35,8 @@ export default function Header() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 sm:space-x-4">
-          {/* Mode Switcher Buttons */}
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Navegación */}
           <div className="bg-indigo-700/60 p-1 rounded-xl flex space-x-1 border border-indigo-500/30">
             <button onClick={() => switchView('store')} className={tabClass('store')}>
               <i className="fa-solid fa-store"></i>
@@ -41,25 +52,64 @@ export default function Header() {
             </button>
           </div>
 
-          {/* Account indicator */}
+          {/* Estado de sesión */}
           <div className="hidden md:flex items-center gap-2 text-xs">
-            <span className="text-indigo-100">Hola, <span className="font-bold text-white">{firstName}</span></span>
-            {currentProfile ? (
-              <button onClick={handleLogout} title="Cerrar sesión" className="bg-indigo-500/50 hover:bg-indigo-500 px-2 py-1.5 rounded-lg transition-all">
-                <i className="fa-solid fa-right-from-bracket"></i>
+            {isAnonymous && (
+              /* Sin sesión → botón de login llamativo */
+              <button
+                onClick={() => openLoginModal()}
+                className="flex items-center gap-2 bg-white text-indigo-700 font-bold px-3 py-1.5 rounded-lg shadow hover:bg-indigo-50 transition-all"
+              >
+                <i className="fa-solid fa-right-to-bracket"></i>
+                <span>Iniciar sesión</span>
               </button>
-            ) : (
-              <button onClick={exitGuest} title="Salir del modo invitado" className="bg-indigo-500/50 hover:bg-indigo-500 px-2 py-1.5 rounded-lg transition-all">
-                <i className="fa-solid fa-right-from-bracket"></i>
-              </button>
+            )}
+
+            {isLoggedIn && (
+              /* Sesión activa */
+              <>
+                <span className="text-indigo-100">
+                  Hola, <span className="font-bold text-white">{firstName}</span>
+                </span>
+                <button
+                  onClick={handleLogout}
+                  title="Cerrar sesión"
+                  className="bg-indigo-500/50 hover:bg-indigo-500 px-2 py-1.5 rounded-lg transition-all"
+                >
+                  <i className="fa-solid fa-right-from-bracket"></i>
+                </button>
+              </>
+            )}
+
+            {isGuest && (
+              /* Modo invitado */
+              <>
+                <span className="text-indigo-100">
+                  Invitado: <span className="font-bold text-white">{firstName}</span>
+                </span>
+                <button
+                  onClick={exitGuest}
+                  title="Salir del modo invitado"
+                  className="bg-indigo-500/50 hover:bg-indigo-500 px-2 py-1.5 rounded-lg transition-all"
+                >
+                  <i className="fa-solid fa-right-from-bracket"></i>
+                </button>
+              </>
             )}
           </div>
 
-          {/* Cart Button (Visible only in store) */}
+          {/* Carrito (solo en tienda) */}
           {currentView === 'store' && (
-            <button onClick={() => setCartModalOpen(true)} className="relative bg-indigo-500 hover:bg-indigo-400 text-white p-2.5 rounded-xl transition-all flex items-center justify-center">
+            <button
+              onClick={() => setCartModalOpen(true)}
+              className="relative bg-indigo-500 hover:bg-indigo-400 text-white p-2.5 rounded-xl transition-all flex items-center justify-center"
+            >
               <i className="fa-solid fa-cart-shopping text-lg"></i>
-              <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold shadow">{cartCount}</span>
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold shadow">
+                  {cartCount}
+                </span>
+              )}
             </button>
           )}
         </div>
