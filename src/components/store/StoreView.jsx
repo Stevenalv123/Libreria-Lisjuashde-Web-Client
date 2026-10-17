@@ -3,6 +3,56 @@ import { useApp } from '../../context/AppContext';
 import HeroSlider from './HeroSlider';
 import ProductGrid from './ProductGrid';
 
+// Banner de promociones activas (se oculta si no hay descuentos)
+function PromoBanner() {
+  const { descuentos } = useApp();
+  if (!descuentos || descuentos.length === 0) return null;
+
+  const etiqueta = (d) => {
+    if (d.tipo === 'porcentaje') return `${Number(d.valor)}% OFF`;
+    if (d.tipo === 'monto_fijo') return `C$${Number(d.valor)} OFF`;
+    return '';
+  };
+
+  // Duplicamos los descuentos para un ticker continuo
+  const items = [...descuentos, ...descuentos];
+
+  return (
+    <div className="relative overflow-hidden bg-gradient-to-r from-indigo-700 via-indigo-600 to-fuchsia-600 text-white shadow-md">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-3">
+        <span className="flex items-center gap-2 font-extrabold text-sm whitespace-nowrap flex-shrink-0">
+          <i className="fa-solid fa-tags text-amber-300"></i>
+          <span>¡Promociones!</span>
+        </span>
+        <div className="relative flex-1 overflow-hidden">
+          <div className="flex gap-8 animate-[promo-marquee_28s_linear_infinite] whitespace-nowrap will-change-transform">
+            {items.map((d, i) => (
+              <span key={`${d.id}-${i}`} className="inline-flex items-center gap-2 text-sm font-medium">
+                <span className="inline-flex items-center justify-center bg-amber-300 text-indigo-900 font-extrabold text-xs px-2 py-0.5 rounded-full">
+                  {etiqueta(d)}
+                </span>
+                <span className="text-white/95">
+                  {d.banner_texto || d.nombre}
+                </span>
+                {d.temporada ? (
+                  <span className="text-white/70 text-xs italic">· {d.temporada}</span>
+                ) : null}
+                <i className="fa-solid fa-circle text-[4px] text-white/40 ml-2"></i>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <style>{`
+        @keyframes promo-marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function StoreView() {
   const { currentCategory, setCurrentCategory, categories } = useApp();
   const [search, setSearch] = useState('');
@@ -13,8 +63,11 @@ export default function StoreView() {
   };
 
   return (
-    <div className="py-6 space-y-8">
-      <HeroSlider scrollToProducts={scrollToProducts} />
+    <div className="space-y-8">
+      <PromoBanner />
+      <div className="pt-6">
+        <HeroSlider scrollToProducts={scrollToProducts} />
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div ref={anchorRef} className="space-y-6 pt-4">

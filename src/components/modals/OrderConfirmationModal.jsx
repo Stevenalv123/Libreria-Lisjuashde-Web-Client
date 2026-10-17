@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { generarFacturaClientePDF } from '../../utils/generarFacturaClientePDF';
 
 export default function OrderConfirmationModal() {
   const { orderConfirmation, closeOrderConfirmation } = useApp();
@@ -7,8 +8,35 @@ export default function OrderConfirmationModal() {
 
   if (!orderConfirmation) return null;
 
-  const { numeroOrden, tipo, precio, nombre } = orderConfirmation;
+  const {
+    numeroOrden,
+    tipo,
+    precio,
+    nombre,
+    email,
+    telefono,
+    metodo_pago,
+    tipo_entrega,
+    notas,
+    items,
+    fecha,
+  } = orderConfirmation;
   const esImpresion = tipo === 'impresion';
+
+  const descargarFactura = () => {
+    generarFacturaClientePDF({
+      numeroOrden,
+      nombre,
+      email,
+      telefono,
+      items: items || [],
+      total: precio,
+      metodo_pago,
+      tipo_entrega,
+      notas,
+      fecha,
+    });
+  };
 
   const copyNumber = async () => {
     try {
@@ -87,6 +115,29 @@ export default function OrderConfirmationModal() {
               </span>
               <span className="text-lg font-extrabold text-slate-800">C${Number(precio).toFixed(2)}</span>
             </div>
+          )}
+
+          {!esImpresion && email && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3">
+              <i className="fa-solid fa-envelope-circle-check text-emerald-500 text-lg mt-0.5" />
+              <div className="text-sm text-emerald-800">
+                <p className="font-bold mb-0.5">Factura enviada por correo</p>
+                <p className="text-xs leading-relaxed">
+                  Tu factura ha sido enviada a <span className="font-semibold">{email}</span>.
+                  <span className="block text-emerald-600/80 mt-0.5">(Envío simulado con fines de demostración.)</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!esImpresion && (
+            <button
+              onClick={descargarFactura}
+              className="w-full rounded-xl border-2 border-indigo-600 py-3 text-sm font-bold text-indigo-700 transition hover:bg-indigo-50 active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <i className="fa-solid fa-file-pdf" />
+              Descargar Factura PDF
+            </button>
           )}
 
           <button

@@ -19,6 +19,12 @@ export function AppProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(['Todos']);
   const [cart, setCart] = useState([]);
+
+  // ===== Descuentos / promociones =====
+  const [descuentos, setDescuentos] = useState([]);
+  // Mapas de aplicación: descuento -> productos / categorías
+  const [descuentoProductos, setDescuentoProductos] = useState([]); // [{ id_descuento, id_producto }]
+  const [descuentoCategorias, setDescuentoCategorias] = useState([]); // [{ id_descuento, categoria_nombre }]
   const [currentCategory, setCurrentCategory] = useState('Todos');
   const [currentView, setCurrentView] = useState('store');
 
@@ -168,6 +174,92 @@ export function AppProvider({ children }) {
       console.error('loadProducts exception:', err);
     }
   }, []);
+
+  // ===== Load descuentos (promociones activas) =====
+  const loadDescuentos = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('descuentos')
+        .select('*')
+        .eq('id_empresa', EMPRESA_ID)
+        .eq('activo', true)
+        .or(`fecha_inicio.is.null,fecha_inicio.lte.${nowIso}`)
+        .or(`fecha_fin.is.null,fecha_fin.gte.${nowIso}`)
+        .order('valor', { ascending: false });
+      if (error) { console.warn('loadDescuentos error:', error.message || error); return; }
+
+      const activos = data || [];
+      setDescuentos(activos);
+
+      if (activos.length === 0) {
+        setDescuentoProductos([]);
+        setDescuentoCategorias([]);
+        return;
+      }
+
+      const ids = activos.map((d) => d.id);
+
+      // Relaciones producto/categoría (solo para descuentos específicos)
+      const [{ data: dp }, { data: dc }] = await Promise.all([
+        supabase.from('descuento_productos').select('id_descuento,id_producto').in('id_descuento', ids),
+        supabase.from('descuento_categorias').select('id_descuento,categoria_nombre').in('id_descuento', ids),
+      ]);
+      setDescuentoProductos(dp || []);
+      setDescuentoCategorias(dc || []);
+    } catch (err) {
+      console.error('loadDescuentos exception:', err);
+    }
+  }, []);
+
+  // Determina si un descuento aplica a un producto dado.
+  const descuentoAplica = useCallback((d, productId, categoryName) => {
+    const aplica = d.aplica_a || 'todos';
+    if (aplica === 'todos') return true;
+    if (aplica === 'producto') {
+      return descuentoProductos.some((r) => r.id_descuento === d.id && r.id_producto === productId);
+    }
+    if (aplica === 'categoria') {
+      return descuentoCategorias.some(
+        (r) => r.id_descuento === d.id && (r.categoria_nombre || '').toLowerCase() === (categoryName || '').toLowerCase()
+      );
+    }
+    return false;
+  }, [descuentoProductos, descuentoCategorias]);
+
+  // Devuelve el mejor descuento para un producto, o null.
+  // { descuento, precioFinal, ahorro, label } — requiere el precio original.
+  const getDescuentoParaProducto = useCallback((productId, categoryName, precioOriginal) => {
+    if (!descuentos || descuentos.length === 0) return null;
+
+    const precio = Number(precioOriginal);
+    // Si no se pasa precio (uso solo para label), buscamos igual el descuento aplicable.
+    const aplicables = descuentos.filter((d) => descuentoAplica(d, productId, categoryName));
+    if (aplicables.length === 0) return null;
+
+    // Elegimos el que genera mayor ahorro sobre este precio.
+    let mejor = null;
+    for (const d of aplicables) {
+      let ahorro = 0;
+      if (d.tipo === 'porcentaje') {
+        ahorro = (precio || 0) * (Number(d.valor) / 100);
+      } else { // monto_fijo
+        ahorro = Number(d.valor);
+      }
+      if (precio) ahorro = Math.min(ahorro, precio); // nunca negativo
+      if (!mejor || ahorro > mejor.ahorro) {
+        const label = d.tipo === 'porcentaje'
+          ? `${Number(d.valor)}% OFF`
+          : `C$${Number(d.valor).toFixed(2)} OFF`;
+        mejor = { descuento: d, ahorro, label };
+      }
+    }
+    if (!mejor) return null;
+
+    const precioFinal = precio ? Math.max(precio - mejor.ahorro, 0) : null;
+    return { descuento: mejor.descuento, precioFinal, ahorro: mejor.ahorro, label: mejor.label };
+  }, [descuentos, descuentoAplica]);
 
   // ===== Auth =====
   const loadMyOrdersRef = useRef(null);
@@ -332,9 +424,22 @@ export function AppProvider({ children }) {
     if (!phone || !phone.trim()) { showToast('Ingresa un teléfono de contacto', 'error'); return false; }
     if (!isSupabaseConfigured()) return false;
 
-    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    // Calcula el precio efectivo de cada item aplicando el descuento vigente (si existe).
+    const precioEfectivo = (item) => {
+      const info = getDescuentoParaProducto(item.id, item.category, item.price);
+      return info && info.precioFinal != null ? info.precioFinal : item.price;
+    };
+
+    const total = cart.reduce((sum, item) => sum + (precioEfectivo(item) * item.quantity), 0);
     const metodo = paymentMethod === 'tarjeta' ? 'Tarjeta' : 'Efectivo en local';
     const entrega = tipoEntrega === 'domicilio' ? 'Domicilio' : 'Recoger en tienda';
+    const emailCliente = email?.trim() || currentProfile?.email || '';
+    // Copia de los items para la factura (el carrito se vacía tras el checkout).
+    const itemsFactura = cart.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      price: precioEfectivo(i),
+    }));
 
     let numeroOrden = null;
     try {
@@ -352,7 +457,7 @@ export function AppProvider({ children }) {
         id_producto: i.id,
         nombre: i.name,
         cantidad: i.quantity,
-        precio_unitario: i.price,
+        precio_unitario: precioEfectivo(i),
         imagen: i.image || '',
       }));
 
@@ -374,9 +479,21 @@ export function AppProvider({ children }) {
 
     setCart([]);
     setCartModalOpen(false);
-    setOrderConfirmation({ numeroOrden, tipo: 'pedido', precio: total, nombre: name.trim() });
+    setOrderConfirmation({
+      numeroOrden,
+      tipo: 'pedido',
+      precio: total,
+      nombre: name.trim(),
+      email: emailCliente,
+      telefono: phone.trim(),
+      metodo_pago: metodo,
+      tipo_entrega: entrega,
+      notas: notas?.trim() || '',
+      items: itemsFactura,
+      fecha: new Date(),
+    });
     return { ok: true, numeroOrden, tipo: 'pedido' };
-  }, [cart, currentProfile, showToast, isSupabaseConfigured]);
+  }, [cart, currentProfile, showToast, isSupabaseConfigured, getDescuentoParaProducto]);
 
   // ===== Print order -> trabajos_impresion =====
   const submitPrintOrder = useCallback(async ({ name, phone, mode, copies, paperSize, notes, file }) => {
@@ -450,6 +567,7 @@ export function AppProvider({ children }) {
       if (!supabase) { setAuthLoading(false); return; }
 
       await loadProducts();
+      await loadDescuentos();
 
       try {
         supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -487,6 +605,8 @@ export function AppProvider({ children }) {
     enterGuest, exitGuest,
     // data loaders
     loadProducts,
+    // descuentos / promociones
+    descuentos, loadDescuentos, getDescuentoParaProducto,
     // toast + confirm
     toast, showToast,
     confirmState, openConfirmModal, resolveConfirm,

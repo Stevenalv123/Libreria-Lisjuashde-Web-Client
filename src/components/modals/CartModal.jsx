@@ -1,13 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import ImageLightbox from './ImageLightbox';
+import CardPaymentModal from './CardPaymentModal';
 
 export default function CartModal() {
-  const { cartModalOpen, setCartModalOpen, cart, changeQty, removeFromCart, checkoutOrder, currentProfile, guestInfo } = useApp();
+  const { cartModalOpen, setCartModalOpen, cart, changeQty, removeFromCart, checkoutOrder, currentProfile, guestInfo, showToast, getDescuentoParaProducto } = useApp();
+
+  // Precio efectivo de un item aplicando el descuento vigente (si existe).
+  const infoDescuento = (item) => getDescuentoParaProducto?.(item.id, item.category, item.price) || null;
+  const precioEfectivo = (item) => {
+    const info = infoDescuento(item);
+    return info && info.precioFinal != null ? info.precioFinal : item.price;
+  };
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('local');
   const [tipoEntrega, setTipoEntrega] = useState('recoger');
   const [notas, setNotas] = useState('');
+  const [lightboxItem, setLightboxItem] = useState(null); // { src, alt }
+  const [cardModalOpen, setCardModalOpen] = useState(false);
 
   // Prefill from logged-in profile or guest info
   useEffect(() => {
@@ -19,9 +30,9 @@ export default function CartModal() {
 
   if (!cartModalOpen) return null;
 
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = cart.reduce((sum, item) => sum + precioEfectivo(item) * item.quantity, 0);
 
-  const handleCheckout = async () => {
+  const finalizarPedido = async () => {
     const ok = await checkoutOrder({
       name: customerName.trim(),
       phone: phone.trim(),
@@ -33,6 +44,33 @@ export default function CartModal() {
     if (ok) {
       setNotas('');
     }
+    return ok;
+  };
+
+  const handleCheckout = async () => {
+    // Si el método es tarjeta, abrimos el modal de pago simulado antes de confirmar
+    if (paymentMethod === 'tarjeta') {
+      if (!customerName.trim()) {
+        showToast('Ingresa el nombre del cliente', 'error');
+        return;
+      }
+      if (!phone.trim()) {
+        showToast('Ingresa un teléfono de contacto', 'error');
+        return;
+      }
+      if (cart.length === 0) {
+        showToast('Agrega productos antes de reservar', 'error');
+        return;
+      }
+      setCardModalOpen(true);
+      return;
+    }
+    await finalizarPedido();
+  };
+
+  const handleCardSuccess = async () => {
+    setCardModalOpen(false);
+    await finalizarPedido();
   };
 
   return (
@@ -56,10 +94,28 @@ export default function CartModal() {
             cart.map((item) => (
               <div key={item.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200">
                 <div className="flex items-center space-x-3">
-                  <img src={item.image} className="w-12 h-12 object-contain bg-white rounded-xl p-1 border border-slate-200" onError={(e) => { e.target.src = 'https://placehold.co/100x100/png?text=Util'; }} />
+                  <div
+                    className="relative group cursor-zoom-in flex-shrink-0"
+                    onClick={() => setLightboxItem({ src: item.image, alt: item.name })}
+                    title="Clic para ampliar imagen"
+                  >
+                    <img src={item.image} className="w-12 h-12 object-contain bg-white rounded-xl p-1 border border-slate-200 group-hover:border-indigo-400 transition" onError={(e) => { e.target.src = 'https://placehold.co/100x100/png?text=Util'; }} />
+                    <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="bg-white/85 rounded-full w-5 h-5 flex items-center justify-center shadow text-indigo-600">
+                        <i className="fa-solid fa-magnifying-glass-plus text-[9px]"></i>
+                      </span>
+                    </span>
+                  </div>
                   <div>
                     <h5 className="font-bold text-slate-900 text-sm">{item.name}</h5>
-                    <span className="text-xs text-indigo-600 font-semibold">C${item.price.toFixed(2)} c/u</span>
+                    {infoDescuento(item) ? (
+                      <span className="text-xs font-semibold flex items-center gap-1.5">
+                        <span className="text-slate-400 line-through">C${item.price.toFixed(2)}</span>
+                        <span className="text-rose-600">C${precioEfectivo(item).toFixed(2)} c/u</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-indigo-600 font-semibold">C${item.price.toFixed(2)} c/u</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -134,6 +190,24 @@ export default function CartModal() {
           <p className="text-center text-xs text-slate-400">El pago se realiza al recoger o recibir tu pedido. Te confirmaremos por teléfono.</p>
         </div>
       </div>
+
+      {/* Lightbox de imagen */}
+      {lightboxItem && (
+        <ImageLightbox
+          src={lightboxItem.src}
+          alt={lightboxItem.alt}
+          onClose={() => setLightboxItem(null)}
+        />
+      )}
+
+      {/* Modal de pago con tarjeta (simulado) */}
+      <CardPaymentModal
+        open={cardModalOpen}
+        onClose={() => setCardModalOpen(false)}
+        total={total}
+        customerName={customerName}
+        onSuccess={handleCardSuccess}
+      />
     </div>
   );
 }
