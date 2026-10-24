@@ -3,3 +3,8 @@ dist/
 .env
 *.log
 .DS_Store
+
+.logs/
+src/.logs/
+src/components/.logs/
+/.logs/

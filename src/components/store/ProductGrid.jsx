@@ -97,17 +97,34 @@ export default function ProductGrid({ search }) {
 
   if (filtered.length === 0) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <div className="col-span-full py-12 text-center text-slate-400">
-          <i className="fa-solid fa-box-open text-4xl mb-2"></i>
-          <p className="text-sm font-medium">No se encontraron productos escolares con ese criterio.</p>
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+          <i className="fa-solid fa-magnifying-glass text-slate-400 text-3xl"></i>
         </div>
+        <p className="text-slate-700 font-semibold text-lg">Sin resultados</p>
+        <p className="text-slate-400 text-sm mt-1">
+          {searchVal
+            ? <>No encontramos productos para "<span className="text-indigo-600 font-medium">{searchVal}</span>"</>
+            : 'No hay productos disponibles en esta categoría.'}
+        </p>
+        {searchVal && (
+          <p className="text-slate-400 text-xs mt-2">Intenta con otro nombre o materia</p>
+        )}
       </div>
     );
   }
 
   return (
     <>
+      {/* Contador de resultados */}
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs text-slate-500">
+          {searchVal || currentCategory !== 'Todos'
+            ? <><span className="font-semibold text-slate-700">{filtered.length}</span> {filtered.length === 1 ? 'producto encontrado' : 'productos encontrados'}{searchVal ? <> · "<span className="text-indigo-600">{searchVal}</span>"</> : ''}</>
+            : <><span className="font-semibold text-slate-700">{filtered.length}</span> productos disponibles</>
+          }
+        </p>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {filtered.map((p) => {
           const outOfStock = p.stock <= 0;
