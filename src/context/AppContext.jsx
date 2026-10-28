@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Single-company storefront. Empresa fixed by env (defaults to 1).
 const EMPRESA_ID = parseInt(import.meta.env.VITE_LIBRERIA_EMPRESA_ID || '1', 10);
 const GUEST_KEY = 'libreria_guest';
+const SUCURSAL_KEY = 'libreria_sucursal';
 
 // Print pricing convention (NIO / C$) — matches admin service products.
 const PRINT_PRICE = { bn: 1, color: 5 };
@@ -16,8 +17,14 @@ export function useApp() {
 
 export function AppProvider({ children }) {
   // ===== Global state =====
-  const [products, setProducts] = useState([]);
+  const [baseProducts, setBaseProducts] = useState([]);
   const [categories, setCategories] = useState(['Todos']);
+  // ===== Sucursales (tiendas físicas) =====
+  const [sucursales, setSucursales] = useState([]);
+  const [sucursalId, setSucursalId] = useState(() => {
+    try { const v = localStorage.getItem(SUCURSAL_KEY); return v ? parseInt(v, 10) : null; } catch { return null; }
+  });
+  const [stockSucursalMap, setStockSucursalMap] = useState(null); // null = stock global (sin sucursal elegida)
   const [cart, setCart] = useState([]);
 
   // ===== Descuentos / promociones =====
@@ -97,6 +104,18 @@ export function AppProvider({ children }) {
   // ===== Access gate (kept for account view checks) =====
   const hasAccess = !!currentProfile || !!guestInfo;
 
+  // Stock efectivo: si hay una sucursal elegida, el stock mostrado es el de esa sucursal.
+  const products = useMemo(() => {
+    if (!stockSucursalMap) return baseProducts;
+    return baseProducts.map((p) => ({ ...p, stock: stockSucursalMap[p.id] ?? 0 }));
+  }, [baseProducts, stockSucursalMap]);
+
+  // Sucursal actualmente seleccionada (objeto completo)
+  const sucursalActual = useMemo(
+    () => sucursales.find((s) => s.id === sucursalId) || null,
+    [sucursales, sucursalId]
+  );
+
   // ===== productsRef: always-current reference to avoid stale closure in effects =====
   const productsRef = useRef([]);
   useEffect(() => { productsRef.current = products; }, [products]);
@@ -165,7 +184,7 @@ export function AppProvider({ children }) {
         category_id: p.id_categoria,
         category: p.categoria || 'General',
       }));
-      setProducts(mapped);
+      setBaseProducts(mapped);
 
       // Build category list dynamically from available products.
       const cats = Array.from(new Set(mapped.map((p) => p.category).filter(Boolean))).sort();
@@ -174,6 +193,54 @@ export function AppProvider({ children }) {
       console.error('loadProducts exception:', err);
     }
   }, []);
+
+  // ===== Sucursales + stock por sucursal =====
+  const loadSucursales = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('sucursales')
+        .select('id, nombre, direccion, telefono')
+        .eq('id_empresa', EMPRESA_ID)
+        .eq('estado', true)
+        .order('id', { ascending: true });
+      if (error) { console.warn('loadSucursales error:', error.message || error); return; }
+      setSucursales(data || []);
+    } catch (err) {
+      console.error('loadSucursales exception:', err);
+    }
+  }, []);
+
+  const loadStockSucursal = useCallback(async (idSuc) => {
+    if (!supabase || !idSuc) { setStockSucursalMap(null); return; }
+    try {
+      const { data, error } = await supabase
+        .from('v_stock_sucursal')
+        .select('id_producto, stock')
+        .eq('id_sucursal', idSuc);
+      if (error) { console.warn('loadStockSucursal error:', error.message || error); setStockSucursalMap(null); return; }
+      const map = {};
+      (data || []).forEach((r) => { map[r.id_producto] = r.stock || 0; });
+      setStockSucursalMap(map);
+    } catch (err) {
+      console.error('loadStockSucursal exception:', err);
+      setStockSucursalMap(null);
+    }
+  }, []);
+
+  const setSucursal = useCallback((id) => {
+    const parsed = id ? parseInt(id, 10) : null;
+    setSucursalId(parsed);
+    try {
+      if (parsed) localStorage.setItem(SUCURSAL_KEY, String(parsed));
+      else localStorage.removeItem(SUCURSAL_KEY);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Al cambiar la sucursal elegida, recargamos el stock de esa sucursal.
+  useEffect(() => {
+    loadStockSucursal(sucursalId);
+  }, [sucursalId, loadStockSucursal]);
 
   // ===== Load descuentos (promociones activas) =====
   const loadDescuentos = useCallback(async () => {
@@ -452,6 +519,7 @@ export function AppProvider({ children }) {
         metodo_pago: metodo,
         tipo_entrega: entrega,
         notas: notas?.trim() || '',
+        id_sucursal: sucursalId || null,
       };
       const itemsPayload = cart.map((i) => ({
         id_producto: i.id,
@@ -489,11 +557,12 @@ export function AppProvider({ children }) {
       metodo_pago: metodo,
       tipo_entrega: entrega,
       notas: notas?.trim() || '',
+      sucursal: sucursalActual ? sucursalActual.nombre : null,
       items: itemsFactura,
       fecha: new Date(),
     });
     return { ok: true, numeroOrden, tipo: 'pedido' };
-  }, [cart, currentProfile, showToast, isSupabaseConfigured, getDescuentoParaProducto]);
+  }, [cart, currentProfile, showToast, isSupabaseConfigured, getDescuentoParaProducto, sucursalId, sucursalActual]);
 
   // ===== Print order -> trabajos_impresion =====
   const submitPrintOrder = useCallback(async ({ name, phone, mode, copies, paperSize, notes, file }) => {
@@ -567,6 +636,7 @@ export function AppProvider({ children }) {
       if (!supabase) { setAuthLoading(false); return; }
 
       await loadProducts();
+      await loadSucursales();
       await loadDescuentos();
 
       try {
@@ -605,6 +675,8 @@ export function AppProvider({ children }) {
     enterGuest, exitGuest,
     // data loaders
     loadProducts,
+    // sucursales
+    sucursales, sucursalId, sucursalActual, setSucursal, loadSucursales,
     // descuentos / promociones
     descuentos, loadDescuentos, getDescuentoParaProducto,
     // toast + confirm

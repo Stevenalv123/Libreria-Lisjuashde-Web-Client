@@ -1,5 +1,6 @@
 import { useApp } from './context/AppContext';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import Toast from './components/Toast';
 import StoreView from './components/store/StoreView';
 import PrintsView from './components/prints/PrintsView';
@@ -35,6 +36,8 @@ export default function App() {
         {currentView === 'prints' && <PrintsView />}
         {currentView === 'access' && <AccessView />}
       </main>
+
+      <Footer />
 
       {/* Modals */}
       <LoginModal />

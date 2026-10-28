@@ -20,8 +20,10 @@ export default function OrderConfirmationModal() {
     notas,
     items,
     fecha,
+    sucursal,
   } = orderConfirmation;
   const esImpresion = tipo === 'impresion';
+  const esRetiro = (tipo_entrega || '').toLowerCase().includes('recoger');
 
   const descargarFactura = () => {
     generarFacturaClientePDF({
@@ -107,6 +109,16 @@ export default function OrderConfirmationModal() {
               </p>
             </div>
           </div>
+
+          {!esImpresion && sucursal && esRetiro && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex gap-3">
+              <i className="fa-solid fa-store text-indigo-500 text-lg mt-0.5" />
+              <div className="text-sm text-indigo-800">
+                <p className="font-bold mb-0.5">Retiro en sucursal {sucursal}</p>
+                <p className="text-xs leading-relaxed">Pasá por tu pedido a esta sucursal cuando te confirmemos que está listo.</p>
+              </div>
+            </div>
+          )}
 
           {precio != null && (
             <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">
