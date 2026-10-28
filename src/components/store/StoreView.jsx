@@ -54,7 +54,7 @@ function PromoBanner() {
 }
 
 export default function StoreView() {
-  const { currentCategory, setCurrentCategory, categories } = useApp();
+  const { currentCategory, setCurrentCategory, categories, sucursalActual } = useApp();
   const [search, setSearch] = useState('');
   const anchorRef = useRef(null);
 
@@ -71,6 +71,17 @@ export default function StoreView() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div ref={anchorRef} className="space-y-6 pt-4">
+          {sucursalActual ? (
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl px-4 py-2.5 text-sm">
+              <i className="fa-solid fa-location-dot text-indigo-500"></i>
+              <span>Mostrando disponibilidad de la sucursal <span className="font-bold">{sucursalActual.nombre}</span>. Cambiá de sucursal en la parte superior.</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-2.5 text-sm">
+              <i className="fa-solid fa-circle-info text-amber-500"></i>
+              <span>Elegí una sucursal arriba para ver la disponibilidad real de cada producto en esa tienda.</span>
+            </div>
+          )}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center space-x-2 overflow-x-auto pb-2 md:pb-0">
               {categories.map((cat) => (

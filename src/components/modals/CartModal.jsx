@@ -4,7 +4,7 @@ import ImageLightbox from './ImageLightbox';
 import CardPaymentModal from './CardPaymentModal';
 
 export default function CartModal() {
-  const { cartModalOpen, setCartModalOpen, cart, changeQty, removeFromCart, checkoutOrder, currentProfile, guestInfo, showToast, getDescuentoParaProducto } = useApp();
+  const { cartModalOpen, setCartModalOpen, cart, changeQty, removeFromCart, checkoutOrder, currentProfile, guestInfo, showToast, getDescuentoParaProducto, sucursales, sucursalId, setSucursal, sucursalActual } = useApp();
 
   // Precio efectivo de un item aplicando el descuento vigente (si existe).
   const infoDescuento = (item) => getDescuentoParaProducto?.(item.id, item.category, item.price) || null;
@@ -48,6 +48,11 @@ export default function CartModal() {
   };
 
   const handleCheckout = async () => {
+    // Al recoger en tienda, la sucursal es obligatoria.
+    if (tipoEntrega === 'recoger' && sucursales && sucursales.length > 0 && !sucursalId) {
+      showToast('Elige la sucursal de retiro', 'error');
+      return;
+    }
     // Si el método es tarjeta, abrimos el modal de pago simulado antes de confirmar
     if (paymentMethod === 'tarjeta') {
       if (!customerName.trim()) {
@@ -162,6 +167,34 @@ export default function CartModal() {
                 </label>
               </div>
             </div>
+
+            {/* Sucursal de retiro (solo al recoger) */}
+            {tipoEntrega === 'recoger' && sucursales && sucursales.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Sucursal de retiro</label>
+                <select
+                  value={sucursalId || ''}
+                  onChange={(e) => setSucursal(e.target.value || null)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                >
+                  <option value="">Selecciona una sucursal…</option>
+                  {sucursales.map((s) => (
+                    <option key={s.id} value={s.id}>{s.nombre}</option>
+                  ))}
+                </select>
+                {sucursalActual ? (
+                  <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-location-dot"></i>
+                    Retiro en sucursal {sucursalActual.nombre}{sucursalActual.direccion ? ` · ${sucursalActual.direccion}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-circle-info"></i>
+                    Elige la sucursal donde recogerás tu pedido.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Método de Pago</label>

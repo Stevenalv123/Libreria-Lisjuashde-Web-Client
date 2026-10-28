@@ -7,6 +7,7 @@ export default function Header() {
     cartCount, setCartModalOpen,
     handleLogout, exitGuest,
     openLoginModal,
+    sucursales, sucursalId, setSucursal,
   } = useApp();
 
   const isLoggedIn = !!currentProfile;
@@ -36,6 +37,24 @@ export default function Header() {
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Selector de sucursal */}
+          {sucursales && sucursales.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-indigo-700/60 border border-indigo-500/30 rounded-xl px-2.5 py-1.5">
+              <i className="fa-solid fa-location-dot text-amber-300 text-sm"></i>
+              <select
+                value={sucursalId || ''}
+                onChange={(e) => setSucursal(e.target.value || null)}
+                title="Elige la sucursal para ver su disponibilidad"
+                className="bg-transparent text-white text-xs sm:text-sm font-medium focus:outline-none cursor-pointer max-w-[130px]"
+              >
+                <option value="" className="text-slate-800">Todas las sucursales</option>
+                {sucursales.map((s) => (
+                  <option key={s.id} value={s.id} className="text-slate-800">{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Navegación */}
           <div className="bg-indigo-700/60 p-1 rounded-xl flex space-x-1 border border-indigo-500/30">
             <button onClick={() => switchView('store')} className={tabClass('store')}>
